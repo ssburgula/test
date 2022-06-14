@@ -1,0 +1,3 @@
+	<ComboBox id="idMenuViewType" showSecondaryValues="true" change="onViewTypeChange" items="{VariantJSONModel>/}">
+									<core:ListItem key="{VariantJSONModel>Variant}" text="{VariantJSONModel>Variant}" additionalText="{VariantJSONModel>VariantDesc}"/>
+								</ComboBox>
