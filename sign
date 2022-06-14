@@ -1,0 +1,1936 @@
+sap.ui.define([
+	"PPM/controller/BaseController",
+	"sap/ui/model/json/JSONModel",
+	"sap/m/Label",
+	"sap/ui/model/Filter",
+	"sap/ui/model/FilterOperator",
+	"PPM/model/formatter",
+	"sap/ui/core/Icon",
+	"sap/m/MessageToast",
+	"sap/m/MessageBox",
+	"sap/m/MessagePopover",
+	"sap/m/MessageItem"
+], function (BaseController, JSONModel, Label, Filter, FilterOperator, formatter, Icon, MessageToast,
+	MessageBox, MessagePopover, MessageItem) {
+
+	"use strict";
+	var signatureLogPdfURL;
+	return BaseController.extend("PPM.controller.Signatures", {
+		formatter: formatter,
+		/**
+		 * Permanent header filters for Signature table
+		 * @type {Array}
+		 */
+		aApplicationHeaderFilters: ["Otyp", "Aedat", "Crdat"],
+		/**
+		 * Permanent header SOrt for Signature table
+		 * @type {Array}
+		 */
+		aApplicationHeaderSorts: ["TaskList"],
+
+		/**
+		 * List of technical Columns to be excluded
+		 * @type {Array}
+		 */
+		aRemovefromcolumns: ["Rstat", "Signauth", "DocId", "Aennr", "CriticalPossible", "ChangePossible",
+			"ListType", "SignState", "RstatTxt", "RstatIcon", "Anlzu", "TimestmpRel", "mattr", "Plnnr",
+			"Plnal", "Plnty", "CtypeTxt", "Signstep", "Loevm", "PlnalExist", "Ltrmn", "Valfrom", "Valto"
+		],
+
+		/**
+
+		* Called when a controller is instantiated and its View controls (if available) are already created.
+
+		* Can be used to modify the View before it is displayed, to bind event handlers and do other one-time initialization.
+
+		* @memberOf PPM.WebContent.view.Signatures
+
+		*/
+
+		/**
+		 * Resource bundle object 
+		 */
+		oBundle: null,
+
+		/**
+		 * Controller callback, called on initialization of controllerName
+		 * @param  {Object} oEvent event
+		 * @return {Void}        [description]
+		 */
+		onInit: function () {
+			//    JSON For view List
+			var oViewList = [
+
+				{
+					"Key": "TO_SIGN",
+					"Value": ""
+				}, {
+					"Key": "ALREADY_SIGN",
+					"Value": ""
+				}, {
+					"Key": "IN_APPROVAL",
+					"Value": ""
+				}, {
+					"Key": "APPROVED",
+					"Value": ""
+				}
+			];
+
+			this.oViewList = oViewList;
+
+			this.getView().byId("idSignaturesPage").setShowFooter(true);
+
+			//      Router object for attach pattern
+			this.oRouter = sap.ui.core.UIComponent.getRouterFor(this);
+			//this.getOwnerComponent().getTargets().getTarget("Signatures").attachDisplay(this._onSignatureMatched, this);
+			this.oRouter.getRoute("Signatures").attachPatternMatched(this._onSignatureMatched, this);
+
+		},
+
+		/**
+		 * Get i18n Resource Bundle
+		 * @return {object} Resource Bundle Object
+		 */
+		_getViewResourceBundle: function () {
+			if (!this.oBundle) {
+				this.oBundle = this.getView().getModel("i18n").getResourceBundle();
+			}
+			return this.oBundle;
+		},
+
+		_onSignatureMatched: function (oEvent) {
+			this.getUserDetail("SIGN");
+
+			this.loadMetaData("SIGNATURE");
+			//oEvent.getParameter("config")._name
+			if (oEvent.getParameter("name") === "Signatures") {
+				var oBundle = this.getView().getModel("i18n").getResourceBundle();
+				_.forEach(this.oViewList, function (ItemValue, ItemKey) {
+
+					ItemValue.Value = oBundle.getText(ItemValue.Key);
+
+				});
+				var oModel = new sap.ui.model.json.JSONModel();
+				oModel.setData(this.oViewList);
+				this.getView().byId("idMenuViewList").setModel(oModel, "ViewListJSON");
+				this.ObjectTypeData();
+				//this.getView().byId("idMenuObjectList").addSelectedKeys(["GI", "MD"]);
+
+				var MenuViewList = this.getView().byId("idMenuViewList").getItems()[0].getText();
+				this.getView().byId("ViewSelectedText").setText(MenuViewList);
+				this.getView().byId("idIconTabChangeActionLogSIGN").setVisible(false);
+				this.getView().byId("idIconTabReviewerSIGN").setVisible(false);
+				this.setVisibleRowsForTable();
+
+			}
+
+		},
+
+		/**
+		 * Set visible rows for the table based on the UI's browser window height
+		 * @return {void} [description]
+		 */
+		setVisibleRowsForTable: function () {
+			var oTable = this.getView().byId("tblSignatureDetail");
+
+			var iTableRowHeight = 34;
+
+			var iWindowHeight = jQuery(window).height();
+			var iHeaderFooterHeight = 48 * 3;
+			var iTableTitleHeight = 32;
+			var iTableHeaderHeight = 37;
+			//var iBuffer = 20;
+
+			var iVisibleRows = Math.floor((iWindowHeight - (iHeaderFooterHeight + iTableTitleHeight + iTableHeaderHeight)) / iTableRowHeight);
+			oTable.setVisibleRowCount(iVisibleRows);
+		},
+
+		/**
+		 * Get Gr Ir Items Table Columns
+		 * @return {[type]} [description]
+		 */
+		getSignatureTableColumns: function (oEvent) {
+			var that = this;
+			/**
+			 * Callback function for the Get request for SignatureUserTableSettings
+			 * @param  {Object} jqXHR                 [description]
+			 * @param  {String} textStatus            [description]
+			 * @param  {Object} oTamUserTableSettings [description]
+			 * @return {void}                       [description]
+			 */
+
+			var ColumnsUserData = [{
+				"columnKey": "Otyp",
+				"visible": true,
+				"index": 0
+			}, {
+				"columnKey": "Iwerk",
+				"visible": true,
+				"index": 1
+			}, {
+				"columnKey": "Equnr",
+				"visible": true,
+				"index": 2
+			}, {
+				"columnKey": "Tplnr",
+				"visible": true,
+				"index": 3
+			}, {
+				"columnKey": "Qmnum",
+				"visible": true,
+				"index": 4
+			}, {
+				"columnKey": "TaskList",
+				"visible": true,
+				"index": 5
+			}];
+
+			var DefaultFilter = [{
+				"sPath": "Otyp",
+				"sOperator": "EQ",
+				"oValue1": "GI",
+				"_bMultiFilter": false
+			}, {
+				"sPath": "Otyp",
+				"sOperator": "EQ",
+				"oValue1": "MD",
+				"_bMultiFilter": false
+			}, {
+				"sPath": "Otyp",
+				"sOperator": "EQ",
+				"oValue1": "GMP",
+				"_bMultiFilter": false
+			}, {
+				"sPath": "Otyp",
+				"sOperator": "EQ",
+				"oValue1": "CMP",
+				"_bMultiFilter": false
+			}, {
+				"sPath": "Otyp",
+				"sOperator": "EQ",
+				"oValue1": "EP",
+				"_bMultiFilter": false
+			}];
+
+			var setSignatureTableColumns = function (jqXHR, textStatus, oTamUserTableSettings) {
+				var aTableColumnsUserData, aTableSortUserData, aTableFilterUserData, Variant, VariantDesc, Viewname,
+					DefaultInd, GlobalInd;
+				that._isTableUserDataAvailable = false;
+				var responseJSON = jqXHR.responseJSON.d.results[0];
+				switch (responseJSON) {
+				case undefined:
+					aTableColumnsUserData = ColumnsUserData;
+					aTableSortUserData = [];
+					aTableFilterUserData = DefaultFilter;
+					break;
+
+				default:
+					that._isTableUserDataAvailable = true;
+					aTableColumnsUserData = window.JSON.parse(responseJSON.ColumnList);
+					aTableSortUserData = window.JSON.parse(responseJSON.SortList);
+					aTableFilterUserData = window.JSON.parse(responseJSON.FilterList);
+					Variant = responseJSON.Variant;
+					VariantDesc = responseJSON.VariantDesc;
+					Viewname = responseJSON.Viewname;
+					DefaultInd = responseJSON.DefaultInd;
+					GlobalInd = responseJSON.GlobalInd;
+					break;
+				}
+
+				that.aTableColumnsUserData = aTableColumnsUserData;
+				that.aTableSortUserData = aTableSortUserData;
+				that.aTableFilterUserData = aTableFilterUserData;
+				that.OtypFilter = _.remove(that.aTableFilterUserData, {
+					"sPath": "Otyp"
+				});
+				that.Variant = Variant;
+				that.VariantNameForReset = Variant;
+				that.VariantDesc = VariantDesc;
+				that.Viewname = Viewname;
+				that.DefaultInd = DefaultInd;
+				that.GlobalInd = GlobalInd;
+
+				var aDefaultVisibleColumns = that.getPersonalizationVisibleColumns();
+				that.setP13nDialogModel();
+				that.addTableColumns(aDefaultVisibleColumns, "tblSignatureDetail");
+				that.getView().byId("idMenuViewType").setSelectedKey();
+				that.getView().byId("idMenuViewType").setSelectedKey(that.Variant);
+				if (that.OtypFilter !== undefined) {
+					var aSelectedKeyList = that.OtypFilter;
+					var aSelectedKeyListUser = [];
+					for (var i = 0; i < aSelectedKeyList.length; i++) {
+						aSelectedKeyListUser[i] = aSelectedKeyList[i].oValue1;
+					}
+					that.aSelectedKeyList = aSelectedKeyListUser;
+					that.getView().byId("idMenuObjectList").setSelectedKeys();
+					that.getView().byId("idMenuObjectList").addSelectedKeys(that.aSelectedKeyList);
+				}
+				that.getView().byId("idMenuObjectList").fireSelectionFinish();
+				that.onVariantData();
+			};
+
+			var ListAggregation = that.getView().byId("idMenuViewList").getModel("ViewListJSON").getData();
+			var ListText = that.getView().byId("ViewSelectedText").getText();
+			var FindInarray = _.find(ListAggregation, {
+				Value: ListText
+			});
+			var ListType = FindInarray.Key;
+			var sPath = "/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01/VARIANTs?$filter=Viewname eq '" + ListType + "' and DefaultInd eq true";
+
+			jQuery.ajax({
+				type: "GET",
+				contentType: "application/xml",
+				url: sPath,
+				dataType: "JSON",
+				context: document.body,
+				complete: setSignatureTableColumns,
+				success: function (data, textStatus, jqXHR) {},
+				error: function (jqXHR, textStatus, errorThrown) {}
+
+			});
+		},
+
+		/* Never used*/
+		getSignatureTableDetails: function () {
+			var that = this;
+			var oView = that.getView();
+			var sPath =
+				"/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01/SIGNATUREs?$filter=Werks eq 'USC8' and ListType eq 'ALREADY_SIGN' and (Otyp eq 'GI' or Otyp eq 'MD')";
+
+			jQuery.ajax({
+				type: "GET",
+				contentType: "application/xml",
+				url: sPath,
+				dataType: "JSON",
+				async: false,
+				success: function (data, textStatus, jqXHR) {
+					var oJSONModel = new sap.ui.model.json.JSONModel();
+					oJSONModel.setData(data["d"]);
+					oView.byId("tblSignatureDetail").setModel(oJSONModel, "JsonSignatureDetails");
+
+				},
+				error: function (jqXHR, textStatus, errorThrown) {}
+
+			});
+
+		},
+
+		//    Go Back to Home page
+		onNavBackToHome: function (sValue) {
+			//    	Clear Fields
+			this.onNavigationBackClear();
+			this.getView().byId("tblSignatureDetail").getBinding("rows").aApplicationFilters = [];
+			if (this.oTablePersonalizationDialog !== undefined) {
+				this.oTablePersonalizationDialog.destroy();
+				this.oTablePersonalizationDialog = undefined;
+			}
+			this.getView().byId("tblSignatureDetail").destroyColumns();
+			var SignatureDetail = this.getView().byId("tblSignatureDetail");
+			var sinatureIndex = SignatureDetail.getSelectedIndex();
+			if (sinatureIndex > 0) {
+				var Otyp = this.oSignatureTableData.Otyp;
+				switch (Otyp) {
+				case "EP":
+					this.onlockingEP();
+					break;
+				case "GI":
+					this.onlockingGI();
+					break;
+				case "GMP":
+					this.onlockingMP();
+					break;
+				case "CMP":
+					this.onlockingMP();
+					break;
+				case "MD":
+					this.onlockingMD();
+					break;
+				}
+			}
+
+			if (sValue !== "X") {
+				var router = sap.ui.core.UIComponent.getRouterFor(this);
+				router.navTo("Home", null, false);
+			}
+		},
+
+		//Clear fields before Nav back to Home page
+		onNavigationBackClear: function () {
+			var oView = this.getView();
+			var oSplitterLayout = oView.byId("idSplitterLayout");
+			var oToggleButton = oView.byId("IdTBFullScreenSignatureGI");
+
+			//  set 50 % size to splitter
+			oSplitterLayout.setSize("50%");
+
+			//set icon and press as false to toggle button
+			oToggleButton.setIcon("sap-icon://exit-full-screen");
+			oToggleButton.setPressed(false);
+
+			//set visible false to 2nd tab and expended as true
+			this.makeTablenotvisible();
+			oView.byId("idIconTabBar").setExpanded(true);
+
+			//set text and remove content and add content to filter tab
+			var oIconTab = oView.byId("idDetailIconTabFilter");
+			oIconTab.removeAllContent();
+			this.getView().byId("idDetailIconTabFilter").setText("");
+			oIconTab.addContent(oView.byId("txtMsgNoDataSignature"));
+
+			//set every fragment destroy so it can open in another view
+			var aFragmentName = ["GeneralInstructions", "CalibrationMaintenancePlan", "ExecutionProtocol", "GeneralMaintenancePlan",
+				"MeasurementData"
+			];
+			for (var i = 0; i < aFragmentName.length; i++) {
+				if (this[aFragmentName[i]] !== undefined) {
+					this[aFragmentName[i]].destroy();
+					this[aFragmentName[i]] = undefined;
+				}
+			}
+
+		},
+
+		//Set the width of Detail Screen by Clicking on an Icon
+		onPressToggelButton: function (oEvent) {
+			var oSource = oEvent.getSource();
+			this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+			var oSplitterLayout = this.getView().byId("idSplitterLayout");
+			if (oSource.getPressed()) {
+
+				oSplitterLayout.setSize("100%");
+				oSource.setIcon("sap-icon://exit-full-screen");
+				oSource.setTooltip(this.resBundle.getText("ExitFullScreen"));
+			} else {
+				oSplitterLayout.setSize("50%");
+				oSource.setIcon("sap-icon://full-screen");
+				oSource.setTooltip(this.resBundle.getText("EnterFullScreen"));
+			}
+		},
+
+		//    On selection of view Type
+		onViewSelection: function (oEvent) {
+			this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+			var oSelectedItem = oEvent.getParameter("item");
+			var sSelectedItemText = oSelectedItem.getText();
+			var that = this;
+
+			if (this.resBundle.getText("ALREADY_SIGN") === sSelectedItemText || this.resBundle.getText("APPROVED") === sSelectedItemText) {
+				if (this.lastcolumn === undefined) {
+					this.lastcolumn = [];
+				}
+				if (this.lastcolumn.length == 0) {
+					var removeColumn = ["NextApprover", "SignaturePending"];
+					for (var i = 0; i < removeColumn.length; i++) {
+						this.lastcolumn.push(_.remove(that.aItemsAllColumns, {
+							"columnKey": "" + removeColumn[i] + ""
+						}));
+					}
+				}
+
+			} else {
+
+				if (this.lastcolumn !== undefined) {
+					if (this.lastcolumn.length > 0) {
+						this.aItemsAllColumns.push(this.lastcolumn[0][0]);
+						this.aItemsAllColumns.push(this.lastcolumn[1][0]);
+					}
+				}
+				this.lastcolumn = [];
+			}
+			if (this.resBundle.getText("APPROVED") === sSelectedItemText) {
+				var dialog = new sap.m.Dialog({
+					title: that.resBundle.getText(""),
+					type: "Message",
+					contentWidth: "30rem",
+					content: [
+						new Label({
+							text: that.resBundle.getText("From")
+						}),
+						new sap.m.DatePicker({
+							id: "DatePickerFrom",
+							displayFormat: "dd/MM/YYYY"
+						}),
+						new Label({
+							text: that.resBundle.getText("To")
+						}),
+						new sap.m.DatePicker({
+							id: "DatePickerTo",
+							displayFormat: "dd/MM/YYYY"
+						}),
+						new sap.m.MessageStrip({
+							id: "MessageStrip",
+							text: that.resBundle.getText("dateerror"),
+							type: "Error",
+							showIcon: true,
+							visible: false
+						})
+					],
+					beginButton: new sap.m.Button({
+						text: that.resBundle.getText("OK"),
+						enabled: true,
+						press: function () {
+							var To = sap.ui.getCore().byId("DatePickerTo");
+							var From = sap.ui.getCore().byId("DatePickerFrom");
+							To.setValueState();
+							var enddate = To.getValue();
+							var startDate = From.getValue();
+							if (Date.parse(enddate) < Date.parse(startDate)) {
+								To.setValueState("Error");
+								sap.ui.getCore().byId("MessageStrip").setVisible(false);
+							} else {
+								var year = (To.getDateValue().getFullYear() - From.getDateValue()
+									.getFullYear()) * 12;
+								var frommonths = From.getDateValue().getMonth();
+								var Tomonths = To.getDateValue().getMonth();
+								var month = Tomonths - frommonths;
+								if (year === 0 && month < 4) {
+									dialog.close();
+									that.callbackend(sSelectedItemText);
+								} else {
+									To.setValueState("Error");
+									sap.ui.getCore().byId("MessageStrip").setVisible(true);
+								}
+							}
+						}
+					}),
+					endButton: new sap.m.Button({
+						text: that.resBundle.getText("Close"),
+						press: function () {
+							dialog.close();
+						}.bind(this)
+					}),
+					afterClose: function () {
+						dialog.destroy();
+					}
+
+				});
+				dialog.open();
+			} else {
+				this.callbackend(sSelectedItemText);
+			}
+		},
+
+		callbackend: function (sSelectedItemText) {
+			var oViewMenu = this.getView().byId("ViewSelectedText");
+			oViewMenu.setText(sSelectedItemText);
+			oViewMenu.setTooltip(sSelectedItemText);
+			if (sSelectedItemText === this.oViewList[0].Value) {
+				this.getView().byId("idSignaturesPage").setShowFooter(true);
+			} else {
+				this.getView().byId("idSignaturesPage").setShowFooter(false);
+			}
+			this.makeTablenotvisible();
+			var oIconTab = this.getView().byId("idDetailIconTabFilter");
+			oIconTab.removeAllContent();
+			this.getView().byId("idDetailIconTabFilter").setText("");
+			oIconTab.addContent(this.getView().byId("txtMsgNoDataSignature"));
+			this.getSignatureTableColumns();
+			this.getView().byId("idMenuObjectList").fireSelectionFinish();
+		},
+
+		/**
+		 * Based on the selection of the Object Type Dropdown
+		 * @param  {object} oEvent [description]
+		 * @return {void}        [description]
+		 */
+		handleSelectionFinish: function (oEvent) {
+			var that = this;
+			var oView = that.getView();
+			var oTable = oView.byId("tblSignatureDetail");
+			var oSource = oEvent.getSource();
+			var aSelectedKeyList = oSource.getSelectedKeys();
+
+			var aFilters = aSelectedKeyList.map(function (value, index) {
+				return new sap.ui.model.Filter("Otyp", sap.ui.model.FilterOperator.EQ, value);
+			});
+
+			var types = [];
+
+			var ListAggregation = that.getView().byId("idMenuViewList").getModel("ViewListJSON").getData();
+			var ListText = that.getView().byId("ViewSelectedText").getText();
+			var FindInarray = _.find(ListAggregation, {
+				Value: ListText
+			});
+			var ListType = FindInarray.Key;
+
+			var vtyp = new sap.ui.model.Filter("ListType", sap.ui.model.FilterOperator.EQ, ListType);
+			this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+			if (this.resBundle.getText("APPROVED") === ListText) {
+				if (sap.ui.getCore().byId("DatePickerFrom") !== undefined) {
+					this.From = sap.ui.getCore().byId("DatePickerFrom").getDateValue();
+					this.To = sap.ui.getCore().byId("DatePickerTo").getDateValue();
+				}
+				var FromDate = sap.ui.core.format.DateFormat.getDateInstance({
+					pattern: "yyyy-MM-dd"
+				}).format(this.From);
+				var ToDate = sap.ui.core.format.DateFormat.getDateInstance({
+					pattern: "yyyy-MM-dd"
+				}).format(this.To);
+
+				types.push(new sap.ui.model.Filter("FromDate", sap.ui.model.FilterOperator.EQ, FromDate));
+				types.push(new sap.ui.model.Filter("ToDate", sap.ui.model.FilterOperator.EQ, ToDate));
+			}
+
+			types.push(vtyp);
+
+			//Binds aggregation rows to model data.
+			oTable.bindRows({
+				path: "/SIGNATUREs",
+				filters: types
+			});
+			var oRows = oTable.getBinding("rows");
+
+			if (oRows !== undefined) {
+				oRows.filter(aFilters);
+				oRows.aApplicationFilters = _.concat(oRows.aApplicationFilters, aFilters);
+
+				//Check rows Binding change
+				oRows.attachChange(function (oEventAttachChange) {
+					var oLength = oEventAttachChange.getSource().iLength;
+					oView.byId("tableHeaderCount").setText(that.oBundle.getText("Signatures") + " (" + oLength + ")");
+				});
+			}
+
+			// Apply filter for the Table items
+			oRows.aFilters = [];
+			var aFilter = [];
+
+			var i;
+			if (that.aTableFilterUserData === null) {
+				that.aTableFilterUserData = [];
+			}
+
+			that.aFiltersAppliedOnColumns = [];
+
+			// Apply User's p13n filters
+			if (!_.isEmpty(that.aTableFilterUserData)) {
+				_.each(that.aTableFilterUserData, function (oFilterData) {
+					var sColumnKey = oFilterData.columnKey;
+					var oColumn = _.find(that.aItemsAllColumns, {
+						columnKey: sColumnKey
+					});
+
+					var sOperation = oFilterData.operation;
+
+					var sValue1, oValue1Date, sValue2 = "",
+						oValue2Date;
+
+					if (oColumn.type === "date") {
+						oValue1Date = new Date(oFilterData.value1);
+						var sDate1 = sap.ui.core.format.DateFormat.getDateInstance({
+							pattern: "yyyy-MM-dd"
+						}).format(oValue1Date);
+						sValue1 = sDate1 + "T00:00:00Z";
+
+						if (oFilterData.value2 !== "") {
+							oValue2Date = new Date(oFilterData.value2);
+							var sDate2 = sap.ui.core.format.DateFormat.getDateInstance({
+								pattern: "yyyy-MM-dd"
+							}).format(oValue2Date);
+							sValue2 = sDate2 + "T00:00:00Z";
+						}
+					} else {
+						sValue1 = oFilterData.value1;
+						sValue2 = oFilterData.value2;
+					}
+
+					var bExclude = oFilterData.exclude;
+
+					aFilter.push(new Filter(sColumnKey, (bExclude) ? FilterOperator.NE : sOperation, sValue1, sValue2));
+					that.aFiltersAppliedOnColumns.push(oColumn.text);
+				});
+			}
+
+			that._iGrIrItemsTableTotalCount = -1;
+			var oBinding = oTable.getBinding("rows");
+			var aSorter = [];
+			if (that.aTableSortUserData !== undefined) {
+				for (i = 0; i < that.aTableSortUserData.length; i++) {
+					var colName = that.aTableSortUserData[i].columnKey;
+					var sSortOrder = that.aTableSortUserData[i].operation;
+
+					aSorter.push(new sap.ui.model.Sorter(colName, ((sSortOrder === "Descending") ? true : false)));
+				}
+			}
+
+			var sUrlFilter = oBinding.sFilterParams;
+			that.sUrlFilterForGetData = sUrlFilter;
+
+			//Filter on table
+			oBinding.filter(aFilter).sort(aSorter);
+
+		},
+
+		//On Clicking of Signature Table Row Items
+
+		onSignatureListRowClick: function (oEvent) {
+			sap.ui.core.BusyIndicator.show(0);
+			this.getView().byId("tblSignatureDetail").setSelectionMode();
+			this.getView().byId("tblSignatureDetail").setSelectionMode("Single");
+			var oView = this.getView();
+			oView.byId("idIconTabBar").setSelectedKey("SIGN");
+			var oTableData = oEvent.getParameters().rowBindingContext.getObject();
+			this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+			this.oSignatureTableData = oTableData;
+			var sObjectType = oTableData.Otyp;
+			/*if(sObjectType === "EP"){
+				this.getView().byId("PDFOverflow").setVisible(true);
+			} else {
+				this.getView().byId("PDFOverflow").setVisible(false);
+			}*/
+			var sPlnal = oTableData.Plnal;
+			if (sPlnal.length < 2) {
+				sPlnal = "0" + sPlnal;
+			}
+			var sIconFilterTabText = "";
+
+			var sPath = "";
+			//General Instructions Fragment and Data Loaded on Right side of screen
+			if (sObjectType === "GI") {
+
+				sIconFilterTabText = this.resBundle.getText("GI");
+				sPath = "/GIs(Iwerk='" + oTableData.Iwerk + "',Plnty='" + oTableData.Plnty + "',Plnnr='" + oTableData.Plnnr + "',Plnal='" +
+					sPlnal + "',Versn='" + oTableData.Versn + "')";
+				this.onGetOjectTypeDetails(sPath);
+				signatureLogPdfURL = "/Action_Log_PDFSet(Qmnum='',Tplnr='',Equnr='',ViewInd='GI',Mltyp='" + oTableData.Mltyp + "',Versn='" +
+					oTableData.Versn + "',Zaehl='',Iwerk='" + oTableData.Iwerk + "',Plnty='" + oTableData.Plnty + "',Plnnr='" + oTableData.Plnnr +
+					"',Plnal='" +
+					sPlnal + "',Warpl='',InstVersn='')/$value";
+
+			}
+			//Execution Protocol Fragment and Data Loaded on Right side of screen
+			else if (sObjectType === "EP") {
+
+				sIconFilterTabText = this.resBundle.getText("EP");
+				sPath = "/EPs(Qmnum='" + oTableData.Qmnum + "',Versn='" + oTableData.Versn + "')";
+				this.onGetExecutionProtocolDetails(sPath);
+				// sPathForSigLogPdf = "/EPs(Qmnum='" + oTableData.Qmnum + "',Versn='" + oTableData.Versn + "')";
+				// this.PDFLogs(sPathForSigLogPdf);
+				signatureLogPdfURL = "/Action_Log_PDFSet(Qmnum='" + oTableData.Qmnum + "',Tplnr='"+oTableData.Tplnr+"',Equnr='"+oTableData.Equnr+"',ViewInd='EP',Mltyp='',Versn='" +
+					oTableData.Versn + "',Zaehl='',Iwerk='',Plnty='',Plnnr='',Plnal='',Warpl='',InstVersn='')/$value";
+
+			}
+			//Measurement Data Fragment and Data Loaded on Right side of screen
+			else if (sObjectType === "MD") {
+
+				sIconFilterTabText = this.resBundle.getText("MD");
+				oTableData.Tplnr = decodeURI(oTableData.Tplnr);
+				oTableData.Tplnr = encodeURI(oTableData.Tplnr);
+				sPath = "/MDs(Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr + "',Mltyp='" + oTableData.Mltyp + "',Zaehl='" +
+					oTableData.Zaehl + "',Versn='" + oTableData.Versn + "')";
+				this.onMeasurementDataDetails(sPath);
+				signatureLogPdfURL = "/Action_Log_PDFSet(Qmnum='',Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr +
+					"',ViewInd='MD',Mltyp='" + oTableData.Mltyp + "',Versn='" +
+					oTableData.Versn + "',Zaehl='" + oTableData.Zaehl + "',Iwerk='',Plnty='',Plnnr='',Plnal='',Warpl='',InstVersn='')/$value";
+
+			}
+			//Calibration Maintenance Plan Fragment and Data Loaded on Right side of screen
+			else if (sObjectType === "CMP") {
+
+				sIconFilterTabText = this.resBundle.getText("CMP");
+				oTableData.Tplnr = decodeURI(oTableData.Tplnr);
+				oTableData.Tplnr = encodeURI(oTableData.Tplnr);
+				sPath = "/MPLANs(Otyp='" + oTableData.Otyp + "',Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr + "',Mltyp='" +
+					oTableData.Mltyp + "',Zaehl='" + oTableData.Zaehl + "',Versn='" + oTableData.Versn + "',InstVersn='" + oTableData.InstVersn +
+					"',Warpl='" + oTableData.Warpl + "',RstatIcon='" + oTableData.RstatIcon + "')";
+				this.onGetCalibrationMaintenancePlanDetails(sPath);
+				signatureLogPdfURL = "/Action_Log_PDFSet(Qmnum='',Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr +
+					"',Mltyp='" +
+					oTableData.Mltyp + "',Zaehl='" + oTableData.Zaehl + "',Versn='" + oTableData.Versn + "',InstVersn='" + oTableData.InstVersn +
+					"',Warpl='" + oTableData.Warpl + "',ViewInd='CMP',Iwerk='',Plnty='',Plnnr='',Plnal='')/$value";
+
+			}
+			//General Maintenance Plan Fragment and Data Loaded on Right side of screen
+			else if (sObjectType === "GMP") {
+
+				sIconFilterTabText = this.resBundle.getText("GMP");
+				oTableData.Tplnr = decodeURI(oTableData.Tplnr);
+				oTableData.Tplnr = encodeURI(oTableData.Tplnr);
+				sPath = "/MPLANs(Otyp='" + oTableData.Otyp + "',Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr + "',Mltyp='" +
+					oTableData.Mltyp + "',Zaehl='" + oTableData.Zaehl + "',Versn='" + oTableData.Versn + "',InstVersn='" + oTableData.InstVersn +
+					"',Warpl='" + oTableData.Warpl + "',RstatIcon='" + oTableData.RstatIcon + "')";
+				this.onGetGeneralMaintenancePlanDetails(sPath);
+				signatureLogPdfURL = "/Action_Log_PDFSet(Qmnum='',Tplnr='" + oTableData.Tplnr + "',Equnr='" + oTableData.Equnr +
+					"',Mltyp='" +
+					oTableData.Mltyp + "',Zaehl='" + oTableData.Zaehl + "',Versn='" + oTableData.Versn + "',InstVersn='" + oTableData.InstVersn +
+					"',Warpl='" + oTableData.Warpl + "',ViewInd='GMP',Iwerk='',Plnty='',Plnnr='',Plnal='')/$value";
+			}
+
+			oView.byId("idDetailIconTabFilter").setText(sIconFilterTabText);
+		},
+
+		//--------------------------      Start Signature Button Logic  --------------------------------------//
+
+		// PDFForLogs: function (oEvent) {
+		// 	var singLogpdfPath=this.path;
+		// 	var oCore = sap.ui.getCore();
+		// 	var that = this;
+		// 	var oView = that.getView();
+		// 	var oModel = this.getView().getModel();
+		// 	var oJSONModelGI = new sap.ui.model.json.JSONModel();
+
+		// 	var mParameterPlant = {
+
+		// 		urlParameters: {
+		// 			$expand: "ACTION_LOG_NAV,RET_MSG_NAV"
+		// 		},
+		// 		success: function (odata) {
+
+		// 			oJSONModelGI.setData(odata);
+		// 			odata.PDFUrlN = odata.__metadata.media_src;
+		// 			that.aMockMessages = odata.RET_MSG_NAV.results;
+		// 			oView.byId("idDetailIconTabFilter").setModel(oJSONModelGI, "oJSONModelGI");
+		// 			oView.byId("idTableSignatureLog").setModel(oJSONModelGI, "oJSONModelGI");
+
+		// 		}.bind(this),
+
+		// 		error: function (oError) {
+		// 			sap.ui.core.BusyIndicator.hide();
+		// 			var Text = "Nodata";
+		// 			this.getError(oError, Text);
+
+		// 		}.bind(this)
+		// 	};
+		// 	oModel.read(singLogpdfPath, mParameterPlant);
+
+		// },
+		// PDFLogs: function (sPathForSigLogPdf) {
+		// 	this.path = sPathForSigLogPdf;
+		// },
+		PDFForLogs: function (oEvent) {
+			var sServiceUrl = "/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01";
+			var sService = sServiceUrl + signatureLogPdfURL;
+			sap.m.URLHelper.redirect(sService, true);
+		},
+
+		/// On clicking of SiGN Button the popup will open
+		onPressSignButton: function (oEvent) {
+			var SignatureDetail = this.getView().byId("tblSignatureDetail");
+			var sinatureIndex = SignatureDetail.getSelectedIndex();
+			if (sinatureIndex < 0) {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+				var bCompact = !!this.getView().$().closest(".sapUiSizeCompact").length;
+				MessageBox.warning(
+					this.resBundle.getText("SignWarningText"), {
+						styleClass: bCompact ? "sapUiSizeCompact" : ""
+					}
+				);
+			} else {
+				this.onPressSignatureButton();
+			}
+		},
+
+		//--------------------------      End Signature Button Logic  --------------------------------------//
+
+		/**
+
+		* Similar to onAfterRendering, but this hook is invoked before the controller's View is re-rendered
+
+		* (NOT before the first rendering! onInit() is used for that one!).
+
+		* @memberOf PPM.WebContent.view.Signatures
+
+		*/
+
+		/**
+		 * onBeforeRendering Required to set the bundle for the controller
+		 */
+		onBeforeRendering: function () {
+			this._getViewResourceBundle();
+
+			this._isPageLoaded = false;
+		},
+
+		/**
+		 * onAfterRendering Required to set the bundle for the controller
+		 */
+		onAfterRendering: function () {
+			this._isPageRendered = true;
+		},
+
+		//    ************************ --Start logic For General Instruction Dialog ---- *****************************
+
+		makeTablenotvisible: function () {
+			var oView = this.getView();
+			oView.byId("idDetailIconTabFilterActionLog").setVisible(false);
+			oView.byId("idIconTabChangeActionLogSIGN").setVisible(false);
+			oView.byId("idIconTabReviewerSIGN").setVisible(false);
+		},
+
+		//Getting the General Instruction Header Data
+		onGetOjectTypeDetails: function (sPath) {
+			var oCore = sap.ui.getCore();
+			var that = this;
+			var oView = that.getView();
+			var oModel = this.getView().getModel();
+			var oJSONModelGI = new sap.ui.model.json.JSONModel();
+
+			var mParameterPlant = {
+				urlParameters: {
+					$expand: "GI_OPR_NAV/GI_OPR_COMP_NAV,ACTION_LOG_NAV,CHANGE_LOG_NAV,NEXTAPPROVER_LOG_NAV,GI_OPR_NAV/GI_OPR_ATTACHEMENT_NAV"
+				},
+				success: function (odata) {
+					sap.ui.core.BusyIndicator.hide();
+					this._showFormFragment("GeneralInstructions", "idDetailIconTabFilter");
+					oView.byId("idDetailIconTabFilterActionLog").setVisible(true);
+					oCore.byId("PlanDataGI").setText("");
+					var oTable = oCore.byId("idTableOperationsGI");
+					if (oTable.getBinding("rows") !== undefined) {
+						this._resetSortingState(oTable);
+					}
+					oJSONModelGI.setData(odata);
+					oCore.byId("PlanDataGI").setText();
+					oCore.byId("idPanelPlanDataGI").setExpanded(false);
+					oCore.byId("idPanelComponentsGI").setExpanded(false);
+					oView.byId("idIconTabBar").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idInpNooftechniciansGI").setValue();
+					oCore.byId("idInpDurationGI").setValue();
+					oCore.byId("idInpWorkunitGI").setValue();
+					oCore.byId("idInpActivityTypeGI").setValue();
+					//this.PDFLogs(oJSONModelGI);
+					this.onlockingGI(odata);
+				}.bind(this),
+
+				error: function (oError) {
+					sap.ui.core.BusyIndicator.hide();
+					var Text = "Nodata";
+					this.getError(oError, Text);
+
+				}.bind(this)
+			};
+
+			oModel.read(sPath, mParameterPlant);
+		},
+
+		onlockingGI: function (odata) {
+			if (odata !== undefined) {
+				var data = odata;
+			} else {
+				data = this.oSignatureTableData;
+			}
+			var Action = "UNLOCK";
+			this.GILocking(data, Action);
+
+		},
+
+		//        ************************ --End logic For General Instruction Dialog ---- *****************************
+
+		//        ************************ --Start logic Execution Protocol For  Dialog ---- *****************************
+
+		//Getting the Execution Protocol Header Data
+		onGetExecutionProtocolDetails: function (sPath) {
+
+			var oCore = sap.ui.getCore();
+			var that = this;
+			var oView = that.getView();
+			var oModel = this.getView().getModel();
+			var oJSONModelGI = new sap.ui.model.json.JSONModel();
+			var mParameterPlant = {
+
+				urlParameters: {
+					$expand: "ACTION_LOG_NAV,RET_MSG_NAV"
+				},
+				success: function (odata) {
+					sap.ui.core.BusyIndicator.hide();
+					var release = ["Released", "Freigegeben", "Rilasciato", "发布", "リリース", "Liberado"];
+					var flag = odata.ACTION_LOG_NAV.results[0].ActionTxt;
+					if (release.indexOf(flag) != -1) {
+						oView.byId("idDetailIconTabFilter").setVisible(false);
+					} else {
+						oView.byId("idDetailIconTabFilter").setVisible(true);
+					}
+					this._showFormFragment("ExecutionProtocol", "idDetailIconTabFilter");
+					oView.byId("idDetailIconTabFilterActionLog").setVisible(true);
+					oView.byId("idIconTabChangeActionLogSIGN").setVisible(false);
+					oView.byId("idIconTabReviewerSIGN").setVisible(false);
+					var MessagePopoverGE = oCore.byId("idbtnMessagePopoverGE");
+					if (this.oMessagePopover) {
+						this.oMessagePopover.close();
+						this.oMessagePopover = undefined;
+					}
+					oJSONModelGI.setData(odata);
+					odata.PDFUrlN = odata.__metadata.media_src;
+					that.aMockMessages = odata.RET_MSG_NAV.results;
+					oCore.byId("idbtnMessagePopoverGE").setVisible(true);
+					oCore.byId("idbtnMessagePopoverGE").setType("Emphasized");
+					oCore.byId("idbtnMessagePopoverGE").setIcon("sap-icon://message-popup");
+					oView.byId("idDetailIconTabFilter").setModel(oJSONModelGI, "oJSONModelGI");
+					oView.byId("idTableSignatureLog").setModel(oJSONModelGI, "oJSONModelGI");
+
+					if (odata.RET_MSG_NAV.results.length !== 0) {
+						MessagePopoverGE.setVisible(true);
+
+						var Error = _.filter(odata.RET_MSG_NAV.results, {
+							"Type": "E"
+						});
+						var Success = _.filter(odata.RET_MSG_NAV.results, {
+							"Type": "S"
+						});
+						if (Error.length !== 0) {
+							oCore.byId("idbtnMessagePopoverGE").setType("Reject");
+							oCore.byId("idbtnMessagePopoverGE").setIcon("sap-icon://error");
+						} else if (Success.length !== 0) {
+							oCore.byId("idbtnMessagePopoverGE").setType("Accept");
+							oCore.byId("idbtnMessagePopoverGE").setIcon("sap-icon://message-success");
+						} else {
+							oCore.byId("idbtnMessagePopoverGE").setType("Emphasized");
+							oCore.byId("idbtnMessagePopoverGE").setIcon("sap-icon://warning");
+						}
+
+					}
+				}.bind(this),
+
+				error: function (oError) {
+					sap.ui.core.BusyIndicator.hide();
+					var Text = "Nodata";
+					this.getError(oError, Text);
+
+				}.bind(this)
+			};
+			oModel.read(sPath, mParameterPlant);
+		},
+
+		MessagePopoverCreate: function () {
+			var oMessageTemplate = new MessageItem({
+				type: {
+					path: "Type",
+					formatter: this.Messagetype
+				},
+				title: "{Message}"
+			});
+
+			this.oMessagePopover = new MessagePopover({
+				items: {
+					path: "/",
+					template: oMessageTemplate
+				}
+			});
+
+			var oMessagePopoverModel = new JSONModel();
+			oMessagePopoverModel.setData(this.aMockMessages);
+			this.oMessagePopover.setModel(oMessagePopoverModel);
+			sap.ui.getCore().byId("idbtnMessagePopoverGE").addDependent(this.oMessagePopover);
+		},
+
+		handleMessagePopoverPress: function (oEvent) {
+			if (!this.oMessagePopover) {
+				this.MessagePopoverCreate();
+			}
+			this.oMessagePopover.toggle(oEvent.getSource());
+
+		},
+
+		Messagetype: function (stype) {
+			var sMsgType = "";
+			if (stype === "W") {
+				sMsgType = "Warning";
+			} else if (stype === "E") {
+				sMsgType = "Error";
+			} else if (stype === "S") {
+				sMsgType = "Success";
+			} else if (stype === "") {
+				sMsgType = "Information";
+			}
+			return sMsgType;
+		},
+
+		//        ************************ --End logic For Execution Protocol Dialog ---- *****************************
+
+		//        ************************ --Start logic For General Maintenance Plan Dialog ---- *********************
+
+		//Getting the General Maintenance Plan Header Data
+		onGetGeneralMaintenancePlanDetails: function (sPath) {
+			var oCore = sap.ui.getCore();
+			var that = this;
+			var oView = that.getView();
+			var oModel = this.getView().getModel();
+			var oJSONModelGI = new sap.ui.model.json.JSONModel();
+			var mParameterPlant = {
+				urlParameters: {
+					$expand: "NEXTAPPROVER_LOG_NAV,CHANGE_LOG_NAV,ACTION_LOG_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_GDO_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_GDOMP_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_OPR_NAV/MPLAN_ITEM_OPR_COMP_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_OPR_NAV/MPLAN_ITEM_OPR_ATTACHEMENT_NAV"
+				},
+				success: function (odata) {
+					sap.ui.core.BusyIndicator.hide();
+					this._showFormFragment("GeneralMaintenancePlan", "idDetailIconTabFilter");
+					oView.byId("idDetailIconTabFilterActionLog").setVisible(true);
+
+					var oTable = oCore.byId("idTableItemOverviewGMPBFL");
+					if (oTable.getBinding("rows") !== undefined) {
+						this._resetSortingState(oTable);
+					}
+					odata.CycleStartReadonly = "X";
+					oCore.byId("idIconTabItemGMPBFL").setVisible(false);
+					oJSONModelGI.setData(odata);
+					if (oCore.byId("idaPnelAdvancedSettingGMPBFL").getExpanded() === true) {
+						oCore.byId("idaPnelAdvancedSettingGMPBFL").setExpanded(false);
+					}
+					if (odata.Zeit === "X") {
+						oCore.byId("RadioButtonGMP").setSelectedIndex(0);
+					} else if (odata.Stich === "X") {
+						oCore.byId("RadioButtonGMP").setSelectedIndex(1);
+					} else {
+						oCore.byId("RadioButtonGMP").setSelectedIndex(2);
+					}
+
+					oCore.byId("idIconTabBarGMPBFL").setSelectedKey("ItemOverview");
+					oView.byId("idIconTabBar").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idTableItemOverviewGMPBFL").setModel(oJSONModelGI, "oJSONModelGI");
+					this.ViewItemData = oJSONModelGI;
+
+					if (odata.MPLAN_ITEM_NAV.results.length === 1) {
+						oCore.byId("idMenuTextItemDataGMP").setVisible(false);
+						oCore.byId("idMenuItemDataGMP").setVisible(false);
+						oCore.byId("idIconTabItemOverviewGMPBFL").setVisible(false);
+					} else {
+						oCore.byId("idMenuTextItemDataGMP").setVisible(true);
+						oCore.byId("idMenuItemDataGMP").setVisible(true);
+						oCore.byId("idIconTabItemOverviewGMPBFL").setVisible(true);
+					}
+					that.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelGMPOPComp");
+					oCore.byId("idPanelComponentsGMPBFL").setModel(new sap.ui.model.json.JSONModel(), "oJSONModelGMPOPComp");
+					var header = _.filter(odata.CHANGE_LOG_NAV.results, {
+						"ChangeTo": "HEADER"
+					});
+					var headermodel = new sap.ui.model.json.JSONModel();
+					var array = [];
+					var CHANGE_LOG_NAV = {};
+					var results = [];
+					array.CHANGE_LOG_NAV = results;
+					array.CHANGE_LOG_NAV.results = header;
+					headermodel.setData(array);
+					this.getView().byId("idTableChangeLog").setModel(headermodel, "oJSONModelGI");
+					that.onItemOverviewRowClickGMPBFL();
+					that.onlockingMP(odata);
+				}.bind(this),
+
+				error: function (oError) {
+					sap.ui.core.BusyIndicator.hide();
+					var Text = "Nodata";
+					this.getError(oError, Text);
+
+				}.bind(this)
+			};
+			oModel.read(sPath, mParameterPlant);
+
+		},
+
+		//Clicking onItem Overview row passing a request for Items
+		onItemOverviewRowClickGMPBFL: function (oEvent) {
+			var oTableData, SelectedItemIndex;
+			var oCore = sap.ui.getCore();
+			var headerdata = this.getView().byId("idDetailIconTabFilter").getModel("oJSONModelGI").getData().MPLAN_ITEM_NAV.results;
+			oCore.byId("PlanDataGMP").setText("");
+			var oTable = oCore.byId("idTableOperationGMPBFL");
+			if (oTable.getBinding("rows") !== undefined) {
+				this._resetSortingState(oTable);
+			}
+			if (oEvent === undefined) {
+				var index = _.findIndex(headerdata, {
+					"Wapos": this.oSignatureTableData.Wapos
+				});
+				oTableData = headerdata[index];
+				SelectedItemIndex = index;
+				oCore.byId("idMenuItemDataGMP").setModel(this.ViewItemData, "ViewItemDataGMP");
+				oCore.byId("idMenuItemDataGMP").setSelectedKey("");
+
+			} else {
+				if (oEvent.getParameters().rowBindingContext === undefined) {
+					var oevent = oEvent.getSource();
+					var SelectedItem = sap.ui.getCore().byId("idMenuItemDataGMP").getSelectedItemId();
+					SelectedItemIndex = _.split(SelectedItem, "idMenuItemDataGMP-", 2);
+					SelectedItemIndex = parseInt(SelectedItemIndex[1], 10);
+					oTableData = oevent.getModel("ViewItemDataGMP").getData().MPLAN_ITEM_NAV.results[SelectedItemIndex];
+
+				} else {
+					oTableData = oEvent.getParameters().rowBindingContext.getObject();
+					oCore.byId("idMenuItemDataGMP").setModel(this.ViewItemData, "ViewItemDataGMP");
+					oCore.byId("idMenuItemDataGMP").setSelectedKey("");
+					oCore.byId("idTableItemOverviewGMPBFL").setSelectionMode();
+					oCore.byId("idTableItemOverviewGMPBFL").setSelectionMode("Single");
+					SelectedItemIndex = oCore.byId("idTableItemOverviewGMPBFL").getSelectedIndex();
+				}
+			}
+
+			this.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelGMPOPComp");
+			sap.ui.getCore().byId("idPanelComponentsGMPBFL").setModel(new sap.ui.model.json.JSONModel(), "oJSONModelGMPOPComp");
+			if (oCore.byId("idPanelPlanDataGMPBFL").getExpanded() === true) {
+				oCore.byId("idPanelPlanDataGMPBFL").setExpanded(false);
+			}
+			oCore.byId("idIconTabBarGMPBFL").setSelectedKey("Item");
+			oCore.byId("idIconTabItemGMPBFL").setVisible(true);
+			oCore.byId("idPanelItemsLocationGMPBFL").setExpanded(false);
+			oCore.byId("idPanelPlanDataGMPBFL").setExpanded(false);
+			oCore.byId("idPanelComponentsGMPBFL").setExpanded(false);
+
+			//for changelog mplan_item
+			var changelog = this.getView().byId("idDetailIconTabFilter").getModel("oJSONModelGI").getData().CHANGE_LOG_NAV;
+			var findchange = _.filter(changelog.results, {
+				"Wapos": oTableData.Wapos
+			});
+			var change = new sap.ui.model.json.JSONModel();
+			change.setData(findchange);
+			oCore.byId("idIconTabChangeActionLogGMP").setModel(change, "ChangelogModel");
+
+			var oTableDatamodel = new sap.ui.model.json.JSONModel();
+			oTableDatamodel.setData(oTableData);
+			this.getOwnerComponent().setModel(oTableDatamodel, "oJSONModelGMPItems");
+			oCore.byId("idTableOperationGMPBFL").setModel(oTableDatamodel, "oJSONModelGMPItems");
+			oCore.byId("idTableMeasurementRangesGMPBFL").setModel(oTableDatamodel, "oJSONModelGMPItems");
+			oCore.byId("idTableItemOverviewGMPBFL").setSelectedIndex(SelectedItemIndex);
+			if (headerdata.length > 1) {
+
+				if (oTableData.Tplnr !== "") {
+					oCore.byId("idMenuItemDataGMP").setSelectedKey(oTableData.Tplnr);
+				} else {
+					oCore.byId("idMenuItemDataGMP").setSelectedKey(oTableData.Equnr);
+				}
+			}
+		},
+
+		onOperationRowClickGMP: function (oEvent) {
+			if (oEvent.getParameters().rowBindingContext !== null) {
+				var oTableData = oEvent.getParameters().rowBindingContext.getObject();
+				var oTableDatamodel = new sap.ui.model.json.JSONModel();
+				oTableDatamodel.setData(oTableData);
+				var COMPLength;
+				var oCore = sap.ui.getCore();
+				oCore.byId("idTableOperationGMPBFL").setSelectionMode();
+				oCore.byId("idTableOperationGMPBFL").setSelectionMode("Single");
+				oCore.byId("PlanDataGMP").setText();
+				oCore.byId("PlanDataGMP").setText(oTableData.Vornr);
+				oCore.byId("idPanelPlanDataGMPBFL").setExpanded(true);
+
+				oCore.byId("idPanelComponentsGMPBFL").setModel(oTableDatamodel, "oJSONModelGMPOPComp");
+				this.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelGMPOPComp");
+				this.getOwnerComponent().setModel(oTableDatamodel, "oJSONModelGMPOPComp");
+
+				COMPLength = oTableDatamodel.getData().MPLAN_ITEM_OPR_COMP_NAV.results.length;
+				if (COMPLength === 0) {
+					oCore.byId("idPanelComponentsGMPBFL").setExpanded(false);
+				} else {
+					oCore.byId("idPanelComponentsGMPBFL").setExpanded(true);
+				}
+				oCore.byId("idPanelComponentsGMPBFL").focus();
+
+			}
+		},
+
+		onlockingMP: function (odata) {
+			if (odata !== undefined) {
+				var data = odata;
+			} else {
+				data = this.oSignatureTableData;
+			}
+			var Action = "UNLOCK";
+			this.MPLocking(data, Action);
+		},
+
+		//        ************************ --End logic For General Maintenance PlanDialog ---- ************************
+
+		//         ************************ --Start logic For Calibration Maintenance Plan Dialog ---- *********************
+
+		//Getting the Calibration Maintenance Plan Header Data
+		onGetCalibrationMaintenancePlanDetails: function (sPath) {
+
+			var oCore = sap.ui.getCore();
+			var that = this;
+			var oView = that.getView();
+			var oModel = this.getView().getModel();
+			var oJSONModelGI = new sap.ui.model.json.JSONModel();
+
+			var mParameterPlant = {
+				urlParameters: {
+					$expand: "NEXTAPPROVER_LOG_NAV,CHANGE_LOG_NAV,ACTION_LOG_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_GDO_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_GDOMP_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_OPR_NAV/MPLAN_ITEM_OPR_COMP_NAV,MPLAN_ITEM_NAV/MPLAN_ITEM_OPR_NAV/MPLAN_ITEM_OPR_ATTACHEMENT_NAV"
+				},
+				success: function (odata) {
+					sap.ui.core.BusyIndicator.hide();
+					this._showFormFragment("CalibrationMaintenancePlan", "idDetailIconTabFilter");
+					oView.byId("idDetailIconTabFilterActionLog").setVisible(true);
+					var oTable = oCore.byId("idTableItemOverviewCMPBFL");
+					if (oTable.getBinding("rows") !== undefined) {
+						this._resetSortingState(oTable);
+					}
+					odata.CycleStartReadonly = "X";
+					oCore.byId("idIconTabItemCMPBFL").setVisible(false);
+					oJSONModelGI.setData(odata);
+					if (oCore.byId("idaPnelAdvancedSettingCMPBFL").getExpanded() === true) {
+						oCore.byId("idaPnelAdvancedSettingCMPBFL").setExpanded(false);
+					}
+					if (odata.Zeit === "X") {
+						oCore.byId("RadioButtonCMP").setSelectedIndex(0);
+					} else if (odata.Stich === "X") {
+						oCore.byId("RadioButtonCMP").setSelectedIndex(1);
+					} else {
+						oCore.byId("RadioButtonCMP").setSelectedIndex(2);
+					}
+					oCore.byId("idIconTabBarCMPBFL").setSelectedKey("ItemOverview");
+					oView.byId("idIconTabBar").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idTableItemOverviewCMPBFL").setModel(oJSONModelGI, "oJSONModelGI");
+					this.ViewItemData = oJSONModelGI;
+
+					if (odata.MPLAN_ITEM_NAV.results.length === 1) {
+						oCore.byId("idMenuTextItemDataCMP").setVisible(false);
+						oCore.byId("idMenuItemDataCMP").setVisible(false);
+						oCore.byId("idIconTabItemOverviewCMPBFL").setVisible(false);
+					} else {
+						oCore.byId("idMenuTextItemDataCMP").setVisible(true);
+						oCore.byId("idMenuItemDataCMP").setVisible(true);
+						oCore.byId("idIconTabItemOverviewCMPBFL").setVisible(true);
+					}
+					that.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelCMPOPComp");
+					oCore.byId("idPanelComponentsCMPBFL").setModel(new sap.ui.model.json.JSONModel(), "oJSONModelCMPOPComp");
+					var header = _.filter(odata.CHANGE_LOG_NAV.results, {
+						"ChangeTo": "HEADER"
+					});
+					var headermodel = new sap.ui.model.json.JSONModel();
+					var array = [];
+					var CHANGE_LOG_NAV = {};
+					var results = [];
+					array.CHANGE_LOG_NAV = results;
+					array.CHANGE_LOG_NAV.results = header;
+					headermodel.setData(array);
+					this.getView().byId("idTableChangeLog").setModel(headermodel, "oJSONModelGI");
+					that.onItemOverviewRowClickCMPBFL();
+					that.onlockingMP(odata);
+				}.bind(this),
+
+				error: function (oError) {
+					sap.ui.core.BusyIndicator.hide();
+					var Text = "Nodata";
+					this.getError(oError, Text);
+
+				}.bind(this)
+			};
+			oModel.read(sPath, mParameterPlant);
+		},
+
+		//Clicking onItem Overview row passing a request for Items
+
+		onItemOverviewRowClickCMPBFL: function (oEvent) {
+			var oTableData, SelectedItemIndex;
+			var oCore = sap.ui.getCore();
+			var headerdata = this.getView().byId("idDetailIconTabFilter").getModel("oJSONModelGI").getData().MPLAN_ITEM_NAV.results;
+			oCore.byId("PlanDataCMP").setText("");
+			var oTable = oCore.byId("idTableOperationsCMPBFL");
+			if (oTable.getBinding("rows") !== undefined) {
+				this._resetSortingState(oTable);
+			}
+			if (oEvent === undefined) {
+				var index = _.findIndex(headerdata, {
+					"Wapos": this.oSignatureTableData.Wapos
+				});
+				oTableData = headerdata[index];
+				SelectedItemIndex = index;
+				oCore.byId("idMenuItemDataCMP").setModel(this.ViewItemData, "ViewItemDataCMP");
+				oCore.byId("idMenuItemDataCMP").setSelectedKey("");
+
+			} else {
+				if (oEvent.getParameters().rowBindingContext === undefined) {
+					var oevent = oEvent.getSource();
+					var SelectedItem = sap.ui.getCore().byId("idMenuItemDataCMP").getSelectedItemId();
+					SelectedItemIndex = _.split(SelectedItem, "idMenuItemDataCMP-", 2);
+					SelectedItemIndex = parseInt(SelectedItemIndex[1], 10);
+					oTableData = oevent.getModel("ViewItemDataCMP").getData().MPLAN_ITEM_NAV.results[SelectedItemIndex];
+				} else {
+					oTableData = oEvent.getParameters().rowBindingContext.getObject();
+					oCore.byId("idMenuItemDataCMP").setModel(this.ViewItemData, "ViewItemDataCMP");
+					oCore.byId("idMenuItemDataCMP").setSelectedKey("");
+					oCore.byId("idTableItemOverviewCMPBFL").setSelectionMode();
+					oCore.byId("idTableItemOverviewCMPBFL").setSelectionMode("Single");
+					SelectedItemIndex = oCore.byId("idTableItemOverviewCMPBFL").getSelectedIndex();
+				}
+			}
+			this.odataCMPLongText = oTableData.Longtext;
+
+			this.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelCMPOPComp");
+			sap.ui.getCore().byId("idPanelComponentsCMPBFL").setModel(new sap.ui.model.json.JSONModel(), "oJSONModelCMPOPComp");
+			if (oCore.byId("idPanelPlanDataCMPBFL").getExpanded() === true) {
+				oCore.byId("idPanelPlanDataCMPBFL").setExpanded(false);
+			}
+			oCore.byId("idIconTabBarCMPBFL").setSelectedKey("Item");
+			oCore.byId("idIconTabItemCMPBFL").setVisible(true);
+			oCore.byId("idPanelItemsLocationCMPBFL").setExpanded(false);
+			oCore.byId("idPanelPlanDataCMPBFL").setExpanded(false);
+			oCore.byId("idPanelComponentsCMPBFL").setExpanded(false);
+
+			//for changelog mplan_item
+			var changelog = this.getView().byId("idDetailIconTabFilter").getModel("oJSONModelGI").getData().CHANGE_LOG_NAV;
+			var findchange = _.filter(changelog.results, {
+				"Wapos": oTableData.Wapos
+			});
+			var change = new sap.ui.model.json.JSONModel();
+			change.setData(findchange);
+			oCore.byId("idIconTabChangeActionLogCMP").setModel(change, "ChangelogModel");
+
+			var oTableDatamodel = new sap.ui.model.json.JSONModel();
+			oTableDatamodel.setData(oTableData);
+			this.getOwnerComponent().setModel(oTableDatamodel, "oJSONModelCMPItems");
+			oCore.byId("idTableOperationsCMPBFL").setModel(oTableDatamodel, "oJSONModelCMPItems");
+			oCore.byId("idTableMeasurementRangesCMPBFL").setModel(oTableDatamodel, "oJSONModelCMPItems");
+
+			oCore.byId("idTableItemOverviewCMPBFL").setSelectedIndex(SelectedItemIndex);
+			if (headerdata.length > 1) {
+
+				if (oTableData.Tplnr !== "") {
+					oCore.byId("idMenuItemDataCMP").setSelectedKey(oTableData.Tplnr);
+				} else {
+					oCore.byId("idMenuItemDataCMP").setSelectedKey(oTableData.Equnr);
+				}
+			}
+		},
+
+		//Clicking on operation table row
+		onOperationRowClickCMP: function (oEvent) {
+
+			if (oEvent.getParameters().rowBindingContext !== null) {
+				var oTableData = oEvent.getParameters().rowBindingContext.getObject();
+				var oTableDatamodel = new sap.ui.model.json.JSONModel();
+				oTableDatamodel.setData(oTableData);
+				var COMPLength;
+				var oCore = sap.ui.getCore();
+				oCore.byId("idTableOperationsCMPBFL").setSelectionMode();
+				oCore.byId("idTableOperationsCMPBFL").setSelectionMode("Single");
+				oCore.byId("PlanDataCMP").setText();
+				oCore.byId("PlanDataCMP").setText(oTableData.Vornr);
+				oCore.byId("idPanelPlanDataCMPBFL").setExpanded(true);
+
+				oCore.byId("idPanelComponentsCMPBFL").setModel(oTableDatamodel, "oJSONModelCMPOPComp");
+				this.getOwnerComponent().setModel(new sap.ui.model.json.JSONModel(), "oJSONModelCMPOPComp");
+				this.getOwnerComponent().setModel(oTableDatamodel, "oJSONModelCMPOPComp");
+
+				COMPLength = oTableDatamodel.getData().MPLAN_ITEM_OPR_COMP_NAV.results.length;
+				if (COMPLength === 0) {
+					oCore.byId("idPanelComponentsCMPBFL").setExpanded(false);
+				} else {
+					oCore.byId("idPanelComponentsCMPBFL").setExpanded(true);
+				}
+				oCore.byId("idPanelComponentsCMPBFL").focus();
+
+			}
+		},
+
+		//If Detailed decription is there then the button will be visible after clicking on that button this Dialod will open
+		ShowLongTextOfDescription: function () {
+			var Title = this.getView().getModel("i18n").getResourceBundle().getText("CalibrationMaintenancePlanLongText");
+			var LongText = this.odataCMPLongText;
+			this.LongtextForMDMP(LongText, Title);
+		},
+
+		//           ************************* --End logic For Calibration Maintenance Plan Dialog ---- *****************************
+
+		//			 *********************** Read Otype Data For Menu Object List  ***************************
+		ObjectTypeData: function () {
+
+			var that = this;
+			var oView = that.getView();
+			var sPath = "/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01/F4_ObjectTypes";
+
+			jQuery.ajax({
+				type: "GET",
+				contentType: "application/xml",
+				url: sPath,
+				dataType: "JSON",
+				async: false,
+				success: function (data, textStatus, jqXHR) {
+					var oJSONModel = new sap.ui.model.json.JSONModel();
+					var aOtypelist = _.filter(data.d.results, function (o) {
+						return o.OTYP !== "GMM" && o.OTYP !== "BCP";
+					});
+					oJSONModel.setData(aOtypelist);
+					oView.byId("idMenuObjectList").setModel(oJSONModel, "JsonOtypeDetails");
+
+				},
+				error: function (jqXHR, textStatus, errorThrown) {
+					var Error = [];
+					Error.push(JSON.parse(jqXHR.responseText).error.message.value);
+					var sErrorMsg = Error;
+					that.onError(sErrorMsg);
+				}
+
+			});
+
+		},
+
+		//  			 *********************** End Logic Read Otype Data For Menu Object List  ***************************
+
+		//  			 *********************** Start Logic for Measurement Data  ***************************
+
+		// Getting the Measurement Data  Header Data
+		onMeasurementDataDetails: function (sPath) {
+			var oCore = sap.ui.getCore();
+			var that = this;
+			var oView = that.getView();
+			var oModel = this.getView().getModel();
+			var oJSONModelGI = new sap.ui.model.json.JSONModel();
+
+			var mParameterPlant = {
+				urlParameters: {
+					$expand: "MD_GRP_NAV/MD_GRP_MPA_NAV,MD_GRP_NAV/MD_GRP_DEV_NAV,MD_UPLOW_NAV,ACTION_LOG_NAV,CHANGE_LOG_NAV,NEXTAPPROVER_LOG_NAV"
+				},
+				success: function (odata) {
+					sap.ui.core.BusyIndicator.hide();
+					this._showFormFragment("MeasurementData", "idDetailIconTabFilter");
+					oView.byId("idDetailIconTabFilterActionLog").setVisible(true);
+
+					this.Mltyp = odata.Mltyp;
+					oJSONModelGI.setData(odata);
+					if (odata.Mltyp === "CA" || odata.Mltyp === "CG") {
+						var oTable = oCore.byId("idTableGroupsMDBFL");
+					} else {
+						oTable = oCore.byId("idTableUpperLowerValuessMDBFL");
+					}
+
+					if (oTable.getBinding("rows") !== undefined) {
+						this._resetSortingState(oTable);
+					}
+					this.odataMDlongText = odata.Longtext;
+					oJSONModelGI.setData(odata);
+					//oCore.byId("RangeMD").setText();
+					oCore.byId("GroupMD").setText();
+					oCore.byId("idInpUnitMDBFL").setValue();
+					oCore.byId("idInpDecimalsMDBFL").setValue();
+					this.Grouplength = oJSONModelGI.getData().MD_GRP_NAV.results.length;
+					oCore.byId("idTableDevicesMDBFL").setModel(new sap.ui.model.json.JSONModel(), "oDeviceModel");
+					oCore.byId("idTableRangesMDBFL").setModel(new sap.ui.model.json.JSONModel(), "oRangeModel");
+					that.getOwnerComponent().setModel(oJSONModelGI, "oJSONModelGI");
+					oView.byId("idIconTabBar").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idTableGroupsMDBFL").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idTableUpperLowerValuessMDBFL").setModel(oJSONModelGI, "oJSONModelGI");
+					oCore.byId("idLblFunctionalLocMDBFL").focus();
+					if (odata.Mltyp === "CA" || odata.Mltyp === "CG") {
+						this.GroupData = oTable.getModel("oJSONModelGI").getData().MD_GRP_NAV.results[0];
+						//this.GroupDataLength = oTable.getModel("oJSONModelGI").getData().MD_GRP_NAV.results.length;
+						this.onGroupClickMDBFL();
+					}
+					this.onlockingMD(odata);
+				}.bind(this),
+
+				error: function (oError) {
+					sap.ui.core.BusyIndicator.hide();
+					var Text = "Nodata";
+					this.getError(oError, Text);
+
+				}.bind(this)
+			};
+			oModel.read(sPath, mParameterPlant);
+
+		},
+
+		//If Detailed decription is there then the button will be visible after clicking on that button this Dialod will open
+		ShowLongTextOfDescriptionMDBF: function () {
+			var LongText = this.odataMDlongText;
+			var Title = this.getView().getModel("i18n").getResourceBundle().getText("MeasurementDataLongText");
+			this.LongtextForMDMP(LongText, Title);
+		},
+
+		onGroupClickMDBFL: function (oEvent) {
+			var oTableData;
+			var oCore = sap.ui.getCore();
+			oCore.byId("idTableGroupsMDBFL").setSelectionMode();
+			oCore.byId("idTableGroupsMDBFL").setSelectionMode("Single");
+			if (oEvent === undefined) {
+				oTableData = this.GroupData;
+				oCore.byId("idTableGroupsMDBFL").setSelectedIndex(0);
+			} else if (oEvent.getParameters().rowBindingContext !== null) {
+				oTableData = oEvent.getParameters().rowBindingContext.getObject();
+			}
+			var oTable = oCore.byId("idTableDevicesMDBFL");
+			if (oTable.getBinding("rows") !== undefined) {
+				this._resetSortingState(oTable);
+			}
+
+			if (oTableData !== undefined) {
+				var oModel = new sap.ui.model.json.JSONModel();
+				oModel.setData(oTableData);
+				//oCore.byId("RangeMD").setText();
+				oCore.byId("GroupMD").setText();
+				oCore.byId("idInpUnitMDBFL").setValue();
+				oCore.byId("idInpDecimalsMDBFL").setValue();
+				oCore.byId("GroupMD").setText(oModel.getData().Shtxt);
+				//oCore.byId("RangeMD").setText(oModel.getData().Shtxt);
+				oCore.byId("idTableDevicesMDBFL").setModel(new sap.ui.model.json.JSONModel(), "oDeviceModel");
+				oCore.byId("idTableRangesMDBFL").setModel(new sap.ui.model.json.JSONModel(), "oRangeModel");
+				oCore.byId("idTableDevicesMDBFL").setModel(oModel, "oDeviceModel");
+				oCore.byId("idTableRangesMDBFL").setModel(oModel, "oRangeModel");
+				oCore.byId("idTableDevicesMDBFL").setSelectedIndex(0);
+				oCore.byId("idInpDecimalsMDBFL").setValue(oTableData.Decim);
+				oCore.byId("idInpUnitMDBFL").setValue(oTableData.Unit);
+			}
+		},
+
+		//On Clicking of Device row Range Data reuest is send
+		onDeviceClickMDBFL: function (oEvent) {
+			if (oEvent.getParameters().rowBindingContext !== null) {
+				var oCore = sap.ui.getCore();
+				oCore.byId("idTableDevicesMDBFL").setSelectionMode();
+				oCore.byId("idTableDevicesMDBFL").setSelectionMode("Single");
+			}
+		},
+
+		onlockingMD: function (odata) {
+			if (odata !== undefined) {
+				var data = odata;
+			} else {
+				data = this.oSignatureTableData;
+			}
+			var Action = "UNLOCK";
+			this.MDLocking(data, Action);
+		},
+
+		//			 	*********************** End Logic for Measurement Data  ***************************
+
+		//	***********************Start Save Varaint Functionality	***********************
+
+		//Save the User Setting 
+		onSaveTableData: function (oEvent) {
+			if (sap.ui.getCore().byId("idInptVarientName").getValue() === "") {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+				sap.ui.getCore().byId("idInptVarientName").setValueState("Error");
+				sap.ui.getCore().byId("idInptVarientName").setPlaceholder(this.resBundle.getText("VarientNamevalue"));
+			} else {
+				var that = this;
+				var oCore = sap.ui.getCore();
+				var sVarientName = oCore.byId("idInptVarientName").getValue();
+				sVarientName = sVarientName.toUpperCase();
+				that.VariantName = sVarientName;
+				var sVarientDescription = oCore.byId("idInptVarientDescription").getValue();
+				var sViewName = that.getView().byId("ViewSelectedText").getText();
+				sViewName = _.find(that.oViewList, {
+					Value: sViewName
+				});
+				sViewName = sViewName.Key;
+				var sDefault = oCore.byId("idChkboxDefaultview").getSelected();
+				var sGlobal = oCore.byId("idChkboxGlobalview").getSelected();
+				var oModel = that.getView().getModel();
+				var oP13nColumnsItemsModelData = that.oP13nDialogModel.getData();
+				var FilterItems = oP13nColumnsItemsModelData.FilterItems;
+				var oBinding = that.getView().byId("tblSignatureDetail").getBinding("rows").aApplicationFilters;
+				_.remove(oBinding, {
+					"sPath": "ListType"
+				});
+
+				FilterItems = _.concat(FilterItems, oBinding);
+
+				var oTableData = {
+					ColumnList: window.JSON.stringify(that.getPersonalizationVisibleColumnsObject(oP13nColumnsItemsModelData.ColumnsItems)),
+					FilterList: window.JSON.stringify(FilterItems),
+					SortList: window.JSON.stringify(oP13nColumnsItemsModelData.SortItems),
+					GlobalInd: sGlobal,
+					DefaultInd: sDefault,
+					Variant: sVarientName,
+					VariantDesc: sVarientDescription,
+					Viewname: sViewName
+				};
+				var mParameter = {
+					success: function (oData, response) {
+						oCore.byId("iddiaLogSaveTable").close().destroy(true);
+						this._oDialogSaveTableData = undefined;
+						var sVariantResponse = response.headers["sap-message"];
+						var sVariantsMessage = JSON.parse(sVariantResponse);
+						sap.m.MessageToast.show(sVariantsMessage.message);
+						that.onVariantData();
+						that.onViewTypeChange();
+
+					},
+					error: function (oError, response) {
+						var Text = "Nodata";
+						this.getError(oError, Text);
+					}
+				};
+				oModel.setUseBatch(false);
+				oModel.create("/VARIANTs", oTableData, mParameter);
+			}
+
+		},
+
+		//Delete the User Setting
+		onDeleteTableData: function () {
+			if (sap.ui.getCore().byId("idSignViewTypeTable").getSelectedItem() === null) {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+
+				var bCompact = !!this.getView().$().closest(".sapUiSizeCompact").length;
+				MessageBox.warning(
+					this.resBundle.getText("VaraintWarningText"), {
+						styleClass: bCompact ? "sapUiSizeCompact" : ""
+					}
+				);
+			} else if (sap.ui.getCore().byId("idInptVarientName").getValue() === "") {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+				sap.ui.getCore().byId("idInptVarientName").setValueState("Error");
+				sap.ui.getCore().byId("idInptVarientName").setPlaceholder(this.resBundle.getText("VarientNamevalue"));
+			} else {
+
+				var oIndex = sap.ui.getCore().byId("idSignViewTypeTable").getSelectedContexts()[0].sPath.split("/")[1];
+				var oVaraint = sap.ui.getCore().byId("idSignViewTypeTable").getSelectedContexts()[0].getModel().getData()[oIndex].Variant;
+				var oValue = sap.ui.getCore().byId("idInptVarientName").getValue();
+				if (oVaraint === oValue) {
+					var that = this;
+					var oCore = sap.ui.getCore();
+					var sVarientName = oCore.byId("idInptVarientName").getValue();
+					var sViewName = that.getView().byId("ViewSelectedText").getText();
+					sViewName = _.find(that.oViewList, {
+						Value: sViewName
+					});
+					sViewName = sViewName.Key;
+					sVarientName = sVarientName.toUpperCase();
+					var oModel = that.getView().getModel();
+					var oJSONModel = new sap.ui.model.json.JSONModel();
+					var mParameter = {
+						success: function (oData, response) {
+							var sVariantResponse = response.headers["sap-message"];
+							var sVariantsMessage = JSON.parse(sVariantResponse);
+							sap.m.MessageToast.show(sVariantsMessage.message);
+							that.onVariantData();
+							oJSONModel.setData(that.getView().byId("idMenuViewType").getModel("VariantJSONModel").getData());
+							oCore.byId("idSignViewTypeTable").setModel(new sap.ui.model.json.JSONModel(), "VariantJSONModel");
+							oCore.byId("idSignViewTypeTable").setModel(oJSONModel, "VariantJSONModel");
+							oCore.byId("idInptVarientName").setValue("");
+							oCore.byId("idInptVarientDescription").setValue("");
+							oCore.byId("idChkboxDefaultview").setSelected(false);
+							oCore.byId("idChkboxGlobalview").setSelected(false);
+							that.makeTablenotvisible();
+							var oIconTab = that.getView().byId("idDetailIconTabFilter");
+							oIconTab.removeAllContent();
+							that.getView().byId("idDetailIconTabFilter").setText("");
+							oIconTab.addContent(that.getView().byId("txtMsgNoDataSignature"));
+							that.getSignatureTableColumns();
+						},
+						error: function (oError, response) {
+							var Text = "Nodata";
+							this.getError(oError, Text);
+						}
+					};
+					oModel.setUseBatch(false);
+					var sPath = "/VARIANTs(Viewname='" + sViewName + "',Variant='" + sVarientName + "')";
+					oModel.remove(sPath, mParameter);
+				} else {
+					sap.ui.getCore().byId("idInptVarientName").setValueState("Error");
+				}
+			}
+
+		},
+
+		//Apply the Setting on  Table by selecting particular varaint
+		onApplyTableData: function () {
+
+			if (sap.ui.getCore().byId("idSignViewTypeTable").getSelectedItem() === null) {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+
+				var bCompact = !!this.getView().$().closest(".sapUiSizeCompact").length;
+				MessageBox.warning(
+					this.resBundle.getText("VaraintWarningText"), {
+						styleClass: bCompact ? "sapUiSizeCompact" : ""
+					}
+				);
+			} else if (sap.ui.getCore().byId("idInptVarientName").getValue() === "") {
+				this.resBundle = this.getView().getModel("i18n").getResourceBundle();
+				sap.ui.getCore().byId("idInptVarientName").setValueState("Error");
+				sap.ui.getCore().byId("idInptVarientName").setPlaceholder(this.resBundle.getText("VarientNamevalue"));
+			} else {
+				var oIndex = sap.ui.getCore().byId("idSignViewTypeTable").getSelectedContexts()[0].sPath.split("/")[1];
+				var oVaraint = sap.ui.getCore().byId("idSignViewTypeTable").getSelectedContexts()[0].getModel().getData()[oIndex].Variant;
+				var oValue = sap.ui.getCore().byId("idInptVarientName").getValue();
+				if (oVaraint === oValue) {
+					var sVarientName = sap.ui.getCore().byId("idInptVarientName").getValue();
+					this.Variant = sVarientName;
+					this.VariantName = sVarientName;
+					this.onVariantData();
+					this.onViewTypeChange();
+					this._oDialogSaveTableData.close().destroy(true);
+					this._oDialogSaveTableData = undefined;
+				} else {
+					sap.ui.getCore().byId("idInptVarientName").setValueState("Error");
+				}
+
+			}
+
+		},
+
+		//	***********************End Save Varaint Functionality	***********************
+
+		// ************** Start Variant Logic ***********************************
+
+		//Calling the varaint Data
+		onVariantData: function () {
+			var that = this;
+			var oView = that.getView();
+			var VariantName = that.Variant;
+			var ListAggregation = oView.byId("idMenuViewList").getModel("ViewListJSON").getData();
+			var ListText = oView.byId("ViewSelectedText").getText();
+			var FindInarray = _.find(ListAggregation, {
+				Value: ListText
+			});
+			var ListType = FindInarray.Key;
+			var sPath = "/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01/VARIANTs?$filter=Viewname eq '" + ListType + "'";
+
+			jQuery.ajax({
+				type: "GET",
+				contentType: "application/xml",
+				url: sPath,
+				dataType: "JSON",
+				async: false,
+				success: function (data, textStatus, jqXHR) {
+					var oJSONModel = new sap.ui.model.json.JSONModel();
+					oJSONModel.setData(data["d"].results);
+					this.Varaints = oJSONModel;
+					oView.byId("idMenuViewType").setModel(new sap.ui.model.json.JSONModel(), "VariantJSONModel");
+					oView.byId("idMenuViewType").setModel(oJSONModel, "VariantJSONModel");
+					oView.byId("idMenuViewType").setSelectedKey(VariantName);
+				},
+				error: function (jqXHR, textStatus, errorThrown) {
+					var Error = [];
+					Error.push(JSON.parse(jqXHR.responseText).error.message.value);
+					var sErrorMsg = Error;
+					that.onError(sErrorMsg);
+				}
+
+			});
+		},
+
+		// ************* End Variant Logic *************************************
+
+		// ************** STart Signature View type Logic *********************
+		//While we were selecting anything from dropdown then it should change view according to the condition
+		//and also selecting the view from save variant dialog
+		onViewTypeChange: function (oEvent) {
+			var that = this;
+			var aSelectedVariant;
+			if (oEvent === undefined) {
+				if (that.VariantName === undefined) {
+					aSelectedVariant = that.VariantNameForReset;
+				} else {
+					aSelectedVariant = that.VariantName;
+				}
+
+			} else {
+				var oSource = oEvent.getSource();
+				aSelectedVariant = oSource.getSelectedKey();
+			}
+			that.getView().byId("idMenuViewType").setSelectedKey(aSelectedVariant);
+
+			var setSignatureTableColumns = function (jqXHR, textStatus, oTamUserTableSettings) {
+				var aTableColumnsUserData, aTableSortUserData, aTableFilterUserData, Variant, VariantDesc, Viewname,
+					DefaultInd, GlobalInd;
+				that._isTableUserDataAvailable = false;
+
+				switch (jqXHR.status) {
+				case 200:
+					that._isTableUserDataAvailable = true;
+					var responseJSON = jqXHR.responseJSON.d.results[0];
+					aTableColumnsUserData = window.JSON.parse(responseJSON.ColumnList);
+					aTableSortUserData = window.JSON.parse(responseJSON.SortList);
+					aTableFilterUserData = window.JSON.parse(responseJSON.FilterList);
+					Variant = responseJSON.Variant;
+					VariantDesc = responseJSON.VariantDesc;
+					Viewname = responseJSON.Viewname;
+					DefaultInd = responseJSON.DefaultInd;
+					GlobalInd = responseJSON.GlobalInd;
+					break;
+				}
+
+				that.aTableColumnsUserData = aTableColumnsUserData;
+				that.aTableSortUserData = aTableSortUserData;
+				that.aTableFilterUserData = aTableFilterUserData;
+				that.OtypFilter = _.remove(that.aTableFilterUserData, {
+					"sPath": "Otyp"
+				});
+				that.Variant = Variant;
+				that.VariantDesc = VariantDesc;
+				that.Viewname = Viewname;
+				that.DefaultInd = DefaultInd;
+				that.GlobalInd = GlobalInd;
+
+				var aDefaultVisibleColumns = that.getPersonalizationVisibleColumns();
+				that.setP13nDialogModel();
+				that.addTableColumns(aDefaultVisibleColumns, "tblSignatureDetail");
+				that.getView().byId("idMenuViewType").setSelectedKey();
+				that.getView().byId("idMenuViewType").setSelectedKey(that.Variant);
+				if (that.OtypFilter !== undefined) {
+					var aSelectedKeyList = that.OtypFilter;
+					var aSelectedKeyListUser = [];
+					for (var i = 0; i < aSelectedKeyList.length; i++) {
+						aSelectedKeyListUser[i] = aSelectedKeyList[i].oValue1;
+					}
+					that.aSelectedKeyList = aSelectedKeyListUser;
+					that.getView().byId("idMenuObjectList").setSelectedKeys();
+					that.getView().byId("idMenuObjectList").addSelectedKeys(that.aSelectedKeyList);
+				}
+				that.getView().byId("idMenuObjectList").fireSelectionFinish();
+				that.onVariantData();
+				if (that.oTablePersonalizationDialog !== undefined) {
+					that.oTablePersonalizationDialog.setModel(that.oP13nDialogModel, "p13nModel");
+				}
+
+				that.makeTablenotvisible();
+				var oIconTab = that.getView().byId("idDetailIconTabFilter");
+				oIconTab.removeAllContent();
+				that.getView().byId("idDetailIconTabFilter").setText("");
+				oIconTab.addContent(that.getView().byId("txtMsgNoDataSignature"));
+			};
+
+			var ListAggregation = that.getView().byId("idMenuViewList").getModel("ViewListJSON").getData();
+			var ListText = that.getView().byId("ViewSelectedText").getText();
+			var FindInarray = _.find(ListAggregation, {
+				Value: ListText
+			});
+			var ListType = FindInarray.Key;
+
+			var sPath = "/sap/opu/odata/BAY0/AD_PPM_UI5_SRV_01/VARIANTs?$filter=Viewname eq '" + ListType + "' and Variant eq '" +
+				aSelectedVariant + "'";
+
+			jQuery.ajax({
+				type: "GET",
+				contentType: "application/xml",
+				url: sPath,
+				dataType: "JSON",
+				context: document.body,
+				complete: setSignatureTableColumns,
+				success: function (data, textStatus, jqXHR) {
+					//	console.log(data);
+				},
+				error: function (jqXHR, textStatus, errorThrown) {
+					var Error = [];
+					Error.push(JSON.parse(jqXHR.responseText).error.message.value);
+					var sErrorMsg = Error;
+					that.onError(sErrorMsg);
+				}
+
+			});
+
+		},
+
+		// ************** End Signature View type Logic *********************
+
+		/**
+
+		* Called when the View has been rendered (so its HTML is part of the document). Post-rendering manipulations of the HTML could be done here.
+
+		* This hook is the same one that SAPUI5 controls get after being rendered.
+
+		* @memberOf PPM.WebContent.view.Signatures
+
+		*/
+
+		//  onAfterRendering: function() {
+
+		//
+
+		//  },
+
+		/**
+
+		* Called when the Controller is destroyed. Use this one to free resources and finalize activities.
+
+		* @memberOf PPM.WebContent.view.Signatures
+
+		*/
+
+		//  onExit: function() {
+
+		//
+
+		//  }
+
+	});
+
+});
